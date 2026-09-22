@@ -18,7 +18,10 @@ adapter process is simultaneously:
    exactly the string to pass back. Matching is exact after trimming, a leading
    `#` optional, case-insensitive, and a label's trailing ` (qualifier)` may be
    dropped when the rest is unique; there is no fuzzy matching, and an ambiguous
-   reference is an error quoting each match's label and id.
+   reference is an error quoting each match's label and id. (`mcpl_close` is
+   the one place a bare id that is no longer registered is accepted, so the
+   desired-open intent for a channel the server has since dropped can still be
+   cleared; a label always has to resolve.)
    - `mcpl_answer` — resolve a held `inference/request`
 2. **Channel provider** (`claude/channel`) — `push/event`, `channels/incoming`,
    and `inference/request` arrive as `<channel source="mcpl" ...>` messages that

@@ -138,14 +138,14 @@ try {
   const status = (await request('tools/call', { name: 'mcpl_status', arguments: {} })) as { content: Array<{ text: string }> }
   const statusText = status?.content?.[0]?.text ?? ''
   ok(statusText.includes('toy: ready'), `mcpl_status shows ready: "${statusText.split('\n')[0]}"`)
-  ok(/toy: .*channels=1\b/.test(statusText), 'mcpl_status counts registered channels instead of listing ids')
+  ok(/toy: .*channels=5\b/.test(statusText), 'mcpl_status counts registered channels instead of listing ids')
   ok(statusText.includes('channels.lifecycle'), 'channels.lifecycle is in the effective grant')
   ok(/toy: .*open=\[Toy Lobby\]/.test(statusText), 'openChannels config opened toy:lobby after channels/register (shown by label)')
   const chans = (await request('tools/call', { name: 'mcpl_channels', arguments: { server: 'toy' } })) as { content: Array<{ text: string }> }
   const chansText = chans?.content?.[0]?.text ?? ''
   ok(/^\* Toy Lobby — toy:lobby$/m.test(chansText), `mcpl_channels lists label — id with open marker: "${chansText.split('\n')[1]}"`)
   const chansFiltered = (await request('tools/call', { name: 'mcpl_channels', arguments: { filter: 'nope' } })) as { content: Array<{ text: string }> }
-  ok(/toy: 0 of 1 channel/.test(chansFiltered?.content?.[0]?.text ?? ''), 'mcpl_channels filter narrows')
+  ok(/toy: 0 of 5 channel/.test(chansFiltered?.content?.[0]?.text ?? ''), 'mcpl_channels filter narrows')
   ok(stderr1.includes('toy: open: toy:lobby'), 'toy server received channels/open')
 
   // ── Channel pushes ──
@@ -184,6 +184,23 @@ try {
   ok(/toy: .*open=\[Toy Lobby\]/.test(status2?.content?.[0]?.text ?? ''), 'mcpl_status reflects the reopened channel')
   const unknown = (await request('tools/call', { name: 'mcpl_send', arguments: { server: 'toy', channel_id: 'toy lobbies', text: 'x' } })) as { isError?: boolean; content: Array<{ text: string }> }
   ok(unknown?.isError === true && /unknown channel "toy lobbies"/.test(unknown?.content?.[0]?.text ?? ''), `no fuzzy matching: "${unknown?.content?.[0]?.text}"`)
+  // Label resolution has two paths beyond the exact match, and each is a
+  // wrong-room delivery if it regresses, so each gets a case that goes red:
+  // the trailing-(qualifier) drop, and ambiguity-as-error. The toy registers
+  // `Toy Lobby (East)` / `(West)` beside the bare `Toy Lobby`, and
+  // `Kitchen (A)` / `(B)` with no bare `Kitchen`.
+  const publishedTo = (id: string) => stderr1.includes(`toy: publish to ${id}:`)
+  const east = (await request('tools/call', { name: 'mcpl_send', arguments: { server: 'toy', channel_id: 'toy lobby (east)', text: 'east' } })) as { isError?: boolean; content: Array<{ text: string }> }
+  ok(!east?.isError && (east?.content?.[0]?.text ?? '').startsWith('delivered') && publishedTo('toy:lobby-east'), `qualified label resolves to its own channel: "${east?.content?.[0]?.text}"`)
+  const bare = (await request('tools/call', { name: 'mcpl_send', arguments: { server: 'toy', channel_id: 'toy lobby', text: 'bare' } })) as { isError?: boolean; content: Array<{ text: string }> }
+  ok(!bare?.isError && publishedTo('toy:lobby') && !publishedTo('toy:lobby-west'), `exact label wins over the qualifier-drop fallback when qualified siblings exist: "${bare?.content?.[0]?.text}"`)
+  const ambiguous = (await request('tools/call', { name: 'mcpl_send', arguments: { server: 'toy', channel_id: 'kitchen', text: 'x' } })) as { isError?: boolean; content: Array<{ text: string }> }
+  const ambiguousText = ambiguous?.content?.[0]?.text ?? ''
+  ok(ambiguous?.isError === true && /"kitchen" is ambiguous/.test(ambiguousText), `ambiguous unqualified reference is an error, not a first-match delivery: "${ambiguousText}"`)
+  ok(ambiguousText.includes('"Kitchen (A)" (id toy:kitchen-a)') && ambiguousText.includes('"Kitchen (B)" (id toy:kitchen-b)'), 'ambiguity error quotes each match as label + id')
+  ok(!publishedTo('toy:kitchen-a') && !publishedTo('toy:kitchen-b'), 'nothing was published to either kitchen')
+  const kitchenB = (await request('tools/call', { name: 'mcpl_send', arguments: { server: 'toy', channel_id: 'kitchen (b)', text: 'b' } })) as { isError?: boolean; content: Array<{ text: string }> }
+  ok(!kitchenB?.isError && publishedTo('toy:kitchen-b') && !publishedTo('toy:kitchen-a'), `qualified reference disambiguates: "${kitchenB?.content?.[0]?.text}"`)
 
   // ── inference/request → mcpl_answer roundtrip ──
   const inf = await waitForChannel(p => meta(p).kind === 'inference-request' && meta(p).server === 'toy', 'inference/request delivered as channel push')

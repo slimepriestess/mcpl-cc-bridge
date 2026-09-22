@@ -63,7 +63,18 @@ async function startDemo() {
   demoStarted = true
   try {
     const reg = (await request('channels/register', {
-      channels: [{ id: 'toy:lobby', type: 'chat', label: 'Toy Lobby', direction: 'bidirectional' }],
+      channels: [
+        { id: 'toy:lobby', type: 'chat', label: 'Toy Lobby', direction: 'bidirectional' },
+        // Label-resolution fixtures for the smoke test. The two qualified
+        // siblings share `Toy Lobby`'s unqualified form, so an exact match
+        // must win over the qualifier-drop fallback; the two kitchens have no
+        // bare `Kitchen`, so a bare reference must be an ambiguity error that
+        // names both, never a silent first-match delivery.
+        { id: 'toy:lobby-east', type: 'chat', label: 'Toy Lobby (East)', direction: 'bidirectional' },
+        { id: 'toy:lobby-west', type: 'chat', label: 'Toy Lobby (West)', direction: 'bidirectional' },
+        { id: 'toy:kitchen-a', type: 'chat', label: 'Kitchen (A)', direction: 'bidirectional' },
+        { id: 'toy:kitchen-b', type: 'chat', label: 'Kitchen (B)', direction: 'bidirectional' },
+      ],
     })) as { results?: Array<{ id: string; accepted: boolean }> }
     log(`register: ${JSON.stringify(reg?.results)}`)
     if (!reg?.results?.some(r => r.id === 'toy:lobby' && r.accepted)) return
